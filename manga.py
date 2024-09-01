@@ -5,12 +5,32 @@ import urllib.parse
 import threading
 from PIL import Image, UnidentifiedImageError
 from fpdf import FPDF
-from PyPDF2 import PdfMerger
 import shutil
 import re
 import time
 
 DIR = os.getcwd()
+
+# Create a new folder to store the manga PDFs
+MANGA_DIR = os.path.join(DIR, 'manga')
+if not os.path.exists(MANGA_DIR):
+    os.mkdir(MANGA_DIR)
+
+def sanitize_directory_name(name):
+    # Replace invalid characters with an underscore or another valid character
+    return re.sub(r'[<>:"/\\|?*]', '_', name)
+
+def extract_chapter_number(chapter_name):
+    # Normalize chapter numbers like "95-5" to "95.5" and then extract
+    normalized_name = chapter_name.replace('-', '.')
+    match = re.search(r'Chapter (\d+(\.\d+)?)', normalized_name, re.IGNORECASE)
+    if match:
+        number = match.group(1)
+        # Add .0 if the number is a whole number (no decimal or dash)
+        if '.' not in number:
+            number += '.0'
+        return number
+    return chapter_name
 
 def page_links(url) -> list:
     retry_attempts = 5
@@ -61,7 +81,6 @@ def download_image(name, url):
             inputimage = Image.open(name).convert("RGBA")
             image = Image.new("RGB", inputimage.size, "WHITE")
             image.paste(inputimage, (0, 0), inputimage)
-            os.remove(name)
             image.save(name)
             break  # Break the loop if download is successful
         except (requests.exceptions.RequestException, UnidentifiedImageError, Exception) as e:
@@ -86,52 +105,159 @@ def download_all_images(urls):
     for thread in threads:
         thread.join()
 
-def convert_to_pdf(name, imgs, pdfs, path):
-    i = 0
-    for img in imgs:
-        if os.path.exists(img):
+def calculate_aspect_ratio(width, height):
+    return width / height
+
+def convert_to_pdf(name, imgs, path):
+    pdf = FPDF('P', 'mm', 'A4')
+    pdf.set_auto_page_break(auto=False)  # Disable automatic page break
+
+    page_width_mm, page_height_mm = 210, 297  # A4 dimensions in mm
+
+    # Convert page size from mm to pixels assuming 96 dpi
+    page_width_px = int(page_width_mm * 96 / 25.4)
+    page_height_px = int(page_height_mm * 96 / 25.4)
+    
+    print(f"PDF page size: {page_width_px}x{page_height_px} pixels")
+
+    remaining_height_px = page_height_px
+
+    for img_path in imgs:
+        if os.path.exists(img_path):
             try:
-                cover = Image.open(img)
-                width, height = cover.size
-                width, height = float(width * 0.264583), float(height * 0.264583)
-                pdf = FPDF('P', 'mm', (width, height))
-                pdf.add_page()
-                pdf.image(img, 0, 0, width, height)
-                pdf.output(pdfs[i], "F")
-                os.remove(img)
-                i += 1
+                cover = Image.open(img_path)
+                img_width, img_height = cover.size
+
+                print(f"Image size: {img_width}x{img_height} pixels")
+
+                # Ratio check to determine if we should process the image normally or split it
+                pdf_aspect_ratio = calculate_aspect_ratio(page_width_px, page_height_px)
+                img_aspect_ratio = calculate_aspect_ratio(img_width, img_height)
+
+                ratio_difference = abs(img_aspect_ratio - pdf_aspect_ratio) / pdf_aspect_ratio
+
+                if ratio_difference > 0.15:
+                    print(f"Image ratio difference is {ratio_difference * 100:.2f}%, processing as a lengthy image.")
+
+                    # Process image by cutting into page-height sections and maintaining width
+                    current_top = 0
+                    while current_top < img_height:
+                        crop_bottom = min(current_top + remaining_height_px, img_height)
+                        new_image_part = cover.crop((0, current_top, img_width, crop_bottom))
+                        current_top = crop_bottom
+
+                        img_part_width, img_part_height = new_image_part.size
+
+                        # Save the cropped image temporarily
+                        temp_img_path = os.path.join(path, f"temp_cropped_{img_path[:-4]}_{current_top}.jpg")
+                        new_image_part.save(temp_img_path)
+
+                        # Convert image dimensions from pixels to mm (keeping width true to size)
+                        img_width_mm = img_part_width * 25.4 / 96
+                        img_height_mm = img_part_height * 25.4 / 96
+
+                        # Add a new page if necessary
+                        if remaining_height_px == page_height_px:
+                            pdf.add_page()
+                            pdf.set_fill_color(0, 0, 0)  # Black background
+                            pdf.rect(0, 0, page_width_mm, page_height_mm, 'F')  # Fill the entire page
+
+                        # Place the image part
+                        y_offset_mm = page_height_mm - (remaining_height_px * 25.4 / 96)
+                        pdf.image(temp_img_path, 0, y_offset_mm, img_width_mm, img_height_mm)
+
+                        # Update remaining height for the current page
+                        remaining_height_px -= img_part_height
+
+                        # If the page is filled, reset the remaining height for the next page
+                        if remaining_height_px <= 0:
+                            remaining_height_px = page_height_px
+
+                        # Clean up the temporary image file
+                        os.remove(temp_img_path)
+
+                else:
+                    # For images that are within the 15% ratio difference, process normally
+                    img_width_mm = img_width * 25.4 / 96
+                    img_height_mm = img_height * 25.4 / 96
+
+                    scale = min(page_width_mm / img_width_mm, page_height_mm / img_height_mm)
+                    new_width = img_width_mm * scale
+                    new_height = img_height_mm * scale
+                    x_offset = (page_width_mm - new_width) / 2
+                    y_offset = page_height_mm - remaining_height_px * 25.4 / 96
+
+                    # Add a new page if necessary
+                    if remaining_height_px == page_height_px:
+                        pdf.add_page()
+                        pdf.set_fill_color(0, 0, 0)  # Black background
+                        pdf.rect(0, 0, page_width_mm, page_height_mm, 'F')  # Fill the entire page
+
+                    pdf.image(img_path, x_offset, y_offset, new_width, new_height)
+
+                    remaining_height_px -= img_height_px
+
+                    # If the page is filled, reset the remaining height for the next page
+                    if remaining_height_px <= 0:
+                        remaining_height_px = page_height_px
+
+                cover.close()  # Ensure the image file is closed before trying to delete it
+                os.remove(img_path)
             except UnidentifiedImageError as e:
-                print(f"Error processing image {img}: {e}")
+                print(f"Error processing image {img_path}: {e}")
                 continue  # Skip the problematic image
         else:
-            print(f"File not found: {img}, skipping.")
+            print(f"File not found: {img_path}, skipping.")
+    
+    # Ensure the manga directory exists before attempting to save the PDF
+    if not os.path.exists(MANGA_DIR):
+        os.makedirs(MANGA_DIR)
 
-    merger = PdfMerger()
-    for pdf in pdfs:
-        if os.path.exists(pdf):
-            merger.append(pdf)
-        else:
-            print(f"PDF file not found: {pdf}, skipping.")
+    pdf_filename = os.path.join(MANGA_DIR, f"{name}.pdf")
+    
+    try:
+        pdf.output(pdf_filename, "F")
+        print(f"Downloaded {name} successfully")
+    except FileNotFoundError as e:
+        print(f"Failed to save PDF: {e}")
+    
+    # Change back to the original directory before attempting to delete the chapter directory
+    os.chdir(DIR)
 
-    merger.write(name + ".pdf")
-    merger.close()
-    os.rename(os.path.join(path, name + ".pdf"), os.path.join(DIR, name + ".pdf"))
-    shutil.rmtree(path)
-    print("Downloaded " + name + " successfully")
+    # Add a short delay to ensure files are closed and ready for deletion
+    time.sleep(1)
 
-def download_manga(name, url):
-    print("Downloading " + name + " from " + url)
+    # Check if the path exists before attempting to delete it
+    if os.path.exists(path):
+        try:
+            shutil.rmtree(path)
+            print(f"Deleted directory {path} successfully.")
+        except Exception as e:
+            print(f"Failed to delete directory {path}: {e}")
+    else:
+        print(f"Directory {path} does not exist, skipping deletion.")
+
+def download_manga(chapter_name, url):
+    print(f"Downloading {chapter_name} from {url}")
+    
+    # First, extract the chapter number immediately after fetching the chapter name
+    chapter_number = extract_chapter_number(chapter_name)
+    print(f"Sanitized chapter number: {chapter_number}")
+    
     pages = page_links(url)
     num = len(pages)
-    print("Downloading " + str(num) + " pages")
-    path = os.path.join(DIR, name)
+    print(f"Downloading {num} pages")
+
+    sanitized_name = sanitize_directory_name(chapter_number)  # Using chapter number for directory name
+    path = os.path.join(DIR, sanitized_name)
+
     if not os.path.exists(path):
         os.mkdir(path)
     os.chdir(path)
+    
     download_all_images(pages)
     imgs = [str(i + 1) + ".jpg" for i in range(num)]
-    pdfs = [str(i + 1) + ".pdf" for i in range(num)]
-    convert_to_pdf(name, imgs, pdfs, path)
+    convert_to_pdf(chapter_number, imgs, path)
 
 def chapter_links(URL) -> dict:
     retry_attempts = 5
@@ -152,7 +278,8 @@ def chapter_links(URL) -> dict:
 def sort_chapters(chapters):
     def extract_chapter_number(chapter_name):
         # Extracting chapter number considering possible decimal points
-        match = re.search(r'Chapter (\d+(?:\.\d+)?)', chapter_name)
+        normalized_name = chapter_name.replace('-', '.')
+        match = re.search(r'Chapter (\d+(?:\.\d+)?)', normalized_name)
         return float(match.group(1)) if match else float('inf')
 
     sorted_chapters = dict(sorted(chapters.items(), key=lambda x: extract_chapter_number(x[0])))
