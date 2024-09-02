@@ -113,116 +113,85 @@ def convert_to_pdf(name, imgs, path):
     pdf.set_auto_page_break(auto=False)  # Disable automatic page break
 
     page_width_mm, page_height_mm = 210, 297  # A4 dimensions in mm
-
-    # Convert page size from mm to pixels assuming 96 dpi
     page_width_px = int(page_width_mm * 96 / 25.4)
     page_height_px = int(page_height_mm * 96 / 25.4)
-    
-    print(f"PDF page size: {page_width_px}x{page_height_px} pixels")
-
-    remaining_height_px = page_height_px
 
     for img_path in imgs:
         if os.path.exists(img_path):
             try:
-                cover = Image.open(img_path)
-                img_width, img_height = cover.size
+                with Image.open(img_path) as cover:
+                    img_width, img_height = cover.size
+                    img_aspect_ratio = img_width / img_height
 
-                print(f"Image size: {img_width}x{img_height} pixels")
+                    # Rescale the image to fit the PDF width while preserving the aspect ratio
+                    scale = page_width_px / img_width
+                    new_width_px = page_width_px
+                    new_height_px = int(img_height * scale)
 
-                # Ratio check to determine if we should process the image normally or split it
-                pdf_aspect_ratio = calculate_aspect_ratio(page_width_px, page_height_px)
-                img_aspect_ratio = calculate_aspect_ratio(img_width, img_height)
+                    if new_height_px > page_height_px:
+                        # If the rescaled image height is longer than one page, split it across multiple pages
+                        current_top = 0
+                        while current_top < new_height_px:
+                            crop_bottom = min(current_top + page_height_px, new_height_px)
+                            new_image_part = cover.crop((0, current_top / scale, img_width, crop_bottom / scale))
+                            current_top = crop_bottom
 
-                ratio_difference = abs(img_aspect_ratio - pdf_aspect_ratio) / pdf_aspect_ratio
+                            img_part_width, img_part_height = new_image_part.size
 
-                if ratio_difference > 0.15:
-                    print(f"Image ratio difference is {ratio_difference * 100:.2f}%, processing as a lengthy image.")
+                            # Convert dimensions for PDF
+                            img_width_mm = page_width_mm
+                            img_height_mm = img_part_height * 25.4 / 96
 
-                    # Process image by cutting into page-height sections and maintaining width
-                    current_top = 0
-                    while current_top < img_height:
-                        crop_bottom = min(current_top + remaining_height_px, img_height)
-                        new_image_part = cover.crop((0, current_top, img_width, crop_bottom))
-                        current_top = crop_bottom
-
-                        img_part_width, img_part_height = new_image_part.size
-
-                        # Save the cropped image temporarily
-                        temp_img_path = os.path.join(path, f"temp_cropped_{img_path[:-4]}_{current_top}.jpg")
-                        new_image_part.save(temp_img_path)
-
-                        # Convert image dimensions from pixels to mm (keeping width true to size)
-                        img_width_mm = img_part_width * 25.4 / 96
-                        img_height_mm = img_part_height * 25.4 / 96
-
-                        # Add a new page if necessary
-                        if remaining_height_px == page_height_px:
+                            # Add a new page
                             pdf.add_page()
                             pdf.set_fill_color(0, 0, 0)  # Black background
-                            pdf.rect(0, 0, page_width_mm, page_height_mm, 'F')  # Fill the entire page
+                            pdf.rect(0, 0, page_width_mm, page_height_mm, 'F')
 
-                        # Place the image part
-                        y_offset_mm = page_height_mm - (remaining_height_px * 25.4 / 96)
-                        pdf.image(temp_img_path, 0, y_offset_mm, img_width_mm, img_height_mm)
+                            # Save the cropped and scaled image temporarily
+                            temp_img_path = os.path.join(path, f"temp_cropped_{img_path[:-4]}_{current_top}.jpg")
+                            new_image_part.save(temp_img_path)
 
-                        # Update remaining height for the current page
-                        remaining_height_px -= img_part_height
+                            # Place the image part on the PDF
+                            y_offset_mm = (page_height_mm - img_height_mm) / 2  # Center vertically
+                            pdf.image(temp_img_path, 0, y_offset_mm, img_width_mm, img_height_mm)
 
-                        # If the page is filled, reset the remaining height for the next page
-                        if remaining_height_px <= 0:
-                            remaining_height_px = page_height_px
+                            # Clean up the temporary image file
+                            os.remove(temp_img_path)
 
-                        # Clean up the temporary image file
-                        os.remove(temp_img_path)
+                    else:
+                        # If the image fits within one page, add it directly
+                        img_width_mm = page_width_mm
+                        img_height_mm = new_height_px * 25.4 / 96
 
-                else:
-                    # For images that are within the 15% ratio difference, process normally
-                    img_width_mm = img_width * 25.4 / 96
-                    img_height_mm = img_height * 25.4 / 96
-
-                    scale = min(page_width_mm / img_width_mm, page_height_mm / img_height_mm)
-                    new_width = img_width_mm * scale
-                    new_height = img_height_mm * scale
-                    x_offset = (page_width_mm - new_width) / 2
-                    y_offset = page_height_mm - remaining_height_px * 25.4 / 96
-
-                    # Add a new page if necessary
-                    if remaining_height_px == page_height_px:
+                        # Add a new page
                         pdf.add_page()
                         pdf.set_fill_color(0, 0, 0)  # Black background
-                        pdf.rect(0, 0, page_width_mm, page_height_mm, 'F')  # Fill the entire page
+                        pdf.rect(0, 0, page_width_mm, page_height_mm, 'F')
 
-                    pdf.image(img_path, x_offset, y_offset, new_width, new_height)
+                        # Place the image in the center vertically
+                        y_offset_mm = (page_height_mm - img_height_mm) / 2
+                        pdf.image(img_path, 0, y_offset_mm, img_width_mm, img_height_mm)
 
-                    remaining_height_px -= img_height_px
-
-                    # If the page is filled, reset the remaining height for the next page
-                    if remaining_height_px <= 0:
-                        remaining_height_px = page_height_px
-
-                cover.close()  # Ensure the image file is closed before trying to delete it
-                os.remove(img_path)
+                os.remove(img_path)  # Ensure the image file is removed after processing
             except UnidentifiedImageError as e:
                 print(f"Error processing image {img_path}: {e}")
                 continue  # Skip the problematic image
         else:
             print(f"File not found: {img_path}, skipping.")
-    
+
     # Ensure the manga directory exists before attempting to save the PDF
     if not os.path.exists(MANGA_DIR):
         os.makedirs(MANGA_DIR)
 
     pdf_filename = os.path.join(MANGA_DIR, f"{name}.pdf")
-    
+
     try:
         pdf.output(pdf_filename, "F")
         print(f"Downloaded {name} successfully")
     except FileNotFoundError as e:
         print(f"Failed to save PDF: {e}")
-    
-    # Change back to the original directory before attempting to delete the chapter directory
-    os.chdir(DIR)
+
+    os.chdir(DIR)  # Change back to the original directory before attempting to delete the chapter directory
 
     # Add a short delay to ensure files are closed and ready for deletion
     time.sleep(1)
