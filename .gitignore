@@ -1,0 +1,7 @@
+.conda
+/bin
+/lib
+/Scripts
+env.ipynb
+get-pip.py
+pyvenv.cfg
