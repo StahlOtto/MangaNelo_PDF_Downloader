@@ -108,95 +108,132 @@ def download_all_images(urls):
 def calculate_aspect_ratio(width, height):
     return width / height
 
+def resize_image_to_fit_width(image, max_width):
+    img_width, img_height = image.size
+    if img_width > max_width:
+        scale = max_width / img_width
+        new_width = int(img_width * scale)
+        new_height = int(img_height * scale)
+        resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        return resized_image
+    return image
+
 def convert_to_pdf(name, imgs, path):
     pdf = FPDF('P', 'mm', 'A4')
-    pdf.set_auto_page_break(auto=False)  # Disable automatic page break
-
-    page_width_mm, page_height_mm = 210, 297  # A4 dimensions in mm
+    pdf.set_auto_page_break(auto=False)
+    
+    page_width_mm, page_height_mm = 210, 297
     page_width_px = int(page_width_mm * 96 / 25.4)
     page_height_px = int(page_height_mm * 96 / 25.4)
-
+    
+    print(f"PDF page size: {page_width_px}x{page_height_px} pixels")
+    
+    remaining_height_px = page_height_px
+    
     for img_path in imgs:
         if os.path.exists(img_path):
             try:
-                with Image.open(img_path) as cover:
-                    img_width, img_height = cover.size
-                    img_aspect_ratio = img_width / img_height
+                cover = Image.open(img_path)
+                # First, resize the image to fit within the page width
+                cover = resize_image_to_fit_width(cover, page_width_px)
+                img_width, img_height = cover.size
 
-                    # Rescale the image to fit the PDF width while preserving the aspect ratio
-                    scale = page_width_px / img_width
-                    new_width_px = page_width_px
-                    new_height_px = int(img_height * scale)
+                print(f"\nProcessing Image: {img_path}")
+                print(f"Raw Image size: {img_width}x{img_height} pixels")
+                
+                # Continue with the aspect ratio check and segmentation as before...
+                pdf_aspect_ratio = calculate_aspect_ratio(page_width_px, page_height_px)
+                img_aspect_ratio = calculate_aspect_ratio(img_width, img_height)
 
-                    if new_height_px > page_height_px:
-                        # If the rescaled image height is longer than one page, split it across multiple pages
-                        current_top = 0
-                        while current_top < new_height_px:
-                            crop_bottom = min(current_top + page_height_px, new_height_px)
-                            new_image_part = cover.crop((0, current_top / scale, img_width, crop_bottom / scale))
-                            current_top = crop_bottom
+                print(f"PDF Aspect Ratio: {pdf_aspect_ratio:.2f}")
+                print(f"Image Aspect Ratio: {img_aspect_ratio:.2f}")
 
-                            img_part_width, img_part_height = new_image_part.size
+                ratio_difference = abs(img_aspect_ratio - pdf_aspect_ratio) / pdf_aspect_ratio
+                print(f"Aspect Ratio Difference: {ratio_difference * 100:.2f}%")
 
-                            # Convert dimensions for PDF
-                            img_width_mm = page_width_mm
-                            img_height_mm = img_part_height * 25.4 / 96
+                if ratio_difference > 0.15:
+                    print(f"--> Image ratio difference is {ratio_difference * 100:.2f}%, processing as a lengthy image.")
 
-                            # Add a new page
+                    current_top = 0
+                    while current_top < img_height:
+                        crop_bottom = min(current_top + remaining_height_px, img_height)
+                        new_image_part = cover.crop((0, current_top, img_width, crop_bottom))
+                        current_top = crop_bottom
+
+                        img_part_width, img_part_height = new_image_part.size
+
+                        temp_img_path = os.path.join(path, f"temp_cropped_{img_path[:-4]}_{current_top}.jpg")
+                        new_image_part.save(temp_img_path)
+
+                        img_width_mm = img_part_width * 25.4 / 96
+                        img_height_mm = img_part_height * 25.4 / 96
+
+                        print(f"Adding lengthy image segment with size: {img_part_width}x{img_part_height} pixels")
+
+                        if remaining_height_px == page_height_px:
                             pdf.add_page()
                             pdf.set_fill_color(0, 0, 0)  # Black background
-                            pdf.rect(0, 0, page_width_mm, page_height_mm, 'F')
+                            pdf.rect(0, 0, page_width_mm, page_height_mm, 'F')  # Fill the entire page
 
-                            # Save the cropped and scaled image temporarily
-                            temp_img_path = os.path.join(path, f"temp_cropped_{img_path[:-4]}_{current_top}.jpg")
-                            new_image_part.save(temp_img_path)
+                        y_offset_mm = page_height_mm - (remaining_height_px * 25.4 / 96)
+                        pdf.image(temp_img_path, 0, y_offset_mm, img_width_mm, img_height_mm)
 
-                            # Place the image part on the PDF
-                            y_offset_mm = (page_height_mm - img_height_mm) / 2  # Center vertically
-                            pdf.image(temp_img_path, 0, y_offset_mm, img_width_mm, img_height_mm)
+                        remaining_height_px -= img_part_height  # Corrected the variable name here
 
-                            # Clean up the temporary image file
-                            os.remove(temp_img_path)
+                        if remaining_height_px <= 0:
+                            remaining_height_px = page_height_px
 
-                    else:
-                        # If the image fits within one page, add it directly
-                        img_width_mm = page_width_mm
-                        img_height_mm = new_height_px * 25.4 / 96
+                        os.remove(temp_img_path)
 
-                        # Add a new page
+                else:
+                    print(f"--> Image ratio difference is {ratio_difference * 100:.2f}%, processing as a normal image.")
+
+                    img_width_mm = img_width * 25.4 / 96
+                    img_height_mm = img_height * 25.4 / 96
+
+                    scale = min(page_width_mm / img_width_mm, page_height_mm / img_height_mm)
+                    new_width = img_width_mm * scale
+                    new_height = img_height_mm * scale
+                    x_offset = (page_width_mm - new_width) / 2
+                    y_offset = page_height_mm - remaining_height_px * 25.4 / 96
+
+                    print(f"Adding normal image with scaled size: {new_width:.2f}mm x {new_height:.2f}mm")
+
+                    if remaining_height_px == page_height_px:
                         pdf.add_page()
                         pdf.set_fill_color(0, 0, 0)  # Black background
-                        pdf.rect(0, 0, page_width_mm, page_height_mm, 'F')
+                        pdf.rect(0, 0, page_width_mm, page_height_mm, 'F')  # Fill the entire page
 
-                        # Place the image in the center vertically
-                        y_offset_mm = (page_height_mm - img_height_mm) / 2
-                        pdf.image(img_path, 0, y_offset_mm, img_width_mm, img_height_mm)
+                    pdf.image(img_path, x_offset, y_offset, new_width, new_height)
 
-                os.remove(img_path)  # Ensure the image file is removed after processing
+                    remaining_height_px -= new_height  # Corrected the variable name here
+
+                    if remaining_height_px <= 0:
+                        remaining_height_px = page_height_px
+
+                cover.close()  # Ensure the image file is closed before trying to delete it
+                os.remove(img_path)
             except UnidentifiedImageError as e:
                 print(f"Error processing image {img_path}: {e}")
                 continue  # Skip the problematic image
         else:
             print(f"File not found: {img_path}, skipping.")
-
-    # Ensure the manga directory exists before attempting to save the PDF
+    
     if not os.path.exists(MANGA_DIR):
         os.makedirs(MANGA_DIR)
 
     pdf_filename = os.path.join(MANGA_DIR, f"{name}.pdf")
-
+    
     try:
         pdf.output(pdf_filename, "F")
         print(f"Downloaded {name} successfully")
     except FileNotFoundError as e:
         print(f"Failed to save PDF: {e}")
+    
+    os.chdir(DIR)
 
-    os.chdir(DIR)  # Change back to the original directory before attempting to delete the chapter directory
-
-    # Add a short delay to ensure files are closed and ready for deletion
     time.sleep(1)
 
-    # Check if the path exists before attempting to delete it
     if os.path.exists(path):
         try:
             shutil.rmtree(path)
@@ -209,7 +246,6 @@ def convert_to_pdf(name, imgs, path):
 def download_manga(chapter_name, url):
     print(f"Downloading {chapter_name} from {url}")
     
-    # First, extract the chapter number immediately after fetching the chapter name
     chapter_number = extract_chapter_number(chapter_name)
     print(f"Sanitized chapter number: {chapter_number}")
     
@@ -217,7 +253,7 @@ def download_manga(chapter_name, url):
     num = len(pages)
     print(f"Downloading {num} pages")
 
-    sanitized_name = sanitize_directory_name(chapter_number)  # Using chapter number for directory name
+    sanitized_name = sanitize_directory_name(chapter_number)
     path = os.path.join(DIR, sanitized_name)
 
     if not os.path.exists(path):
