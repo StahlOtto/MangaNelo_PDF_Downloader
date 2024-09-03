@@ -1,7 +1,14 @@
+# Exclude virtual environment directories
 .conda
 /bin
 /lib
 /Scripts
+
+# Exclude Jupyter Notebook environment file
 env.ipynb
+
+# Exclude pip installer script
 get-pip.py
+
+# Exclude Python virtual environment configuration
 pyvenv.cfg
