@@ -128,8 +128,6 @@ def convert_to_pdf(name, imgs, path):
     
     print(f"PDF page size: {page_width_px}x{page_height_px} pixels")
     
-    remaining_height_px = page_height_px
-    
     for img_path in imgs:
         if os.path.exists(img_path):
             try:
@@ -156,7 +154,7 @@ def convert_to_pdf(name, imgs, path):
 
                     current_top = 0
                     while current_top < img_height:
-                        crop_bottom = min(current_top + remaining_height_px, img_height)
+                        crop_bottom = min(current_top + page_height_px, img_height)
                         new_image_part = cover.crop((0, current_top, img_width, crop_bottom))
                         current_top = crop_bottom
 
@@ -170,18 +168,11 @@ def convert_to_pdf(name, imgs, path):
 
                         print(f"Adding lengthy image segment with size: {img_part_width}x{img_part_height} pixels")
 
-                        if remaining_height_px == page_height_px:
-                            pdf.add_page()
-                            pdf.set_fill_color(0, 0, 0)  # Black background
-                            pdf.rect(0, 0, page_width_mm, page_height_mm, 'F')  # Fill the entire page
+                        pdf.add_page()
+                        pdf.set_fill_color(0, 0, 0)  # Black background
+                        pdf.rect(0, 0, page_width_mm, page_height_mm, 'F')  # Fill the entire page
 
-                        y_offset_mm = page_height_mm - (remaining_height_px * 25.4 / 96)
-                        pdf.image(temp_img_path, 0, y_offset_mm, img_width_mm, img_height_mm)
-
-                        remaining_height_px -= img_part_height  # Corrected the variable name here
-
-                        if remaining_height_px <= 0:
-                            remaining_height_px = page_height_px
+                        pdf.image(temp_img_path, 0, 0, img_width_mm, img_height_mm)
 
                         os.remove(temp_img_path)
 
@@ -194,22 +185,18 @@ def convert_to_pdf(name, imgs, path):
                     scale = min(page_width_mm / img_width_mm, page_height_mm / img_height_mm)
                     new_width = img_width_mm * scale
                     new_height = img_height_mm * scale
-                    x_offset = (page_width_mm - new_width) / 2
-                    y_offset = page_height_mm - remaining_height_px * 25.4 / 96
 
                     print(f"Adding normal image with scaled size: {new_width:.2f}mm x {new_height:.2f}mm")
 
-                    if remaining_height_px == page_height_px:
-                        pdf.add_page()
-                        pdf.set_fill_color(0, 0, 0)  # Black background
-                        pdf.rect(0, 0, page_width_mm, page_height_mm, 'F')  # Fill the entire page
+                    # For normal images, each image starts on a new page
+                    pdf.add_page()
+                    pdf.set_fill_color(0, 0, 0)  # Black background
+                    pdf.rect(0, 0, page_width_mm, page_height_mm, 'F')  # Fill the entire page
+
+                    x_offset = (page_width_mm - new_width) / 2
+                    y_offset = (page_height_mm - new_height) / 2
 
                     pdf.image(img_path, x_offset, y_offset, new_width, new_height)
-
-                    remaining_height_px -= new_height  # Corrected the variable name here
-
-                    if remaining_height_px <= 0:
-                        remaining_height_px = page_height_px
 
                 cover.close()  # Ensure the image file is closed before trying to delete it
                 os.remove(img_path)
