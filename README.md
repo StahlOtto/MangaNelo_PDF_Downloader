@@ -76,7 +76,7 @@ To run the script, use the following command:
 python manga.py
 ```
 
-Once the script runs, it will prompt you for the URL of the manga you want to download. Simply copy the manga URL from the website and paste it when prompted. Use the website https://m.manganelo.com/wwww as the code was built with this website in mind.
+Once the script runs, it will prompt you for the URL of the manga you want to download. Simply copy the manga URL from the website and paste it when prompted. Use the website https://www.nelomanga.net/xyz as the code was built with this website in mind.
 
 #### Usage Example
 
