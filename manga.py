@@ -16,9 +16,11 @@ MANGA_DIR = os.path.join(DIR, 'manga')
 if not os.path.exists(MANGA_DIR):
     os.mkdir(MANGA_DIR)
 
+
 def sanitize_directory_name(name):
     # Replace invalid characters with an underscore or another valid character
     return re.sub(r'[<>:"/\\|?*]', '_', name)
+
 
 def extract_chapter_number(chapter_name):
     # Normalize chapter numbers like "95-5" to "95.5" and then extract
@@ -31,6 +33,7 @@ def extract_chapter_number(chapter_name):
             number += '.0'
         return number
     return chapter_name
+
 
 def page_links(url) -> list:
     retry_attempts = 5
@@ -49,6 +52,7 @@ def page_links(url) -> list:
             else:
                 raise
 
+
 def download_image(name, url):
     retry_attempts = 5
     for attempt in range(retry_attempts):
@@ -57,8 +61,8 @@ def download_image(name, url):
             HEADERS = {
                 'Accept': 'image/png,image/svg+xml,image/*;q=0.8,video/*;q=0.8,*/*;q=0.5',
                 'Accept-Encoding': 'gzip, deflate, br',
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.2 Safari/605.1.15',
-                'Host': domain, 'Accept-Language': 'en-ca', 'Referer': 'https://manganelo.com/',
+                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:141.0) Gecko/20100101 Firefox/141.0',
+                'Host': domain, 'Accept-Language': 'en-US,en;q=0.5', 'Referer': 'https://www.nelomanga.net/',
                 'Connection': 'keep-alive'
             }
             r = requests.get(url, headers=HEADERS, stream=True)
@@ -96,6 +100,7 @@ def download_image(name, url):
                     f.write(r.content)
                 print(f"Saved error response content to {error_filename}")
 
+
 def download_all_images(urls):
     threads = []
     for i in range(len(urls)):
@@ -105,8 +110,10 @@ def download_all_images(urls):
     for thread in threads:
         thread.join()
 
+
 def calculate_aspect_ratio(width, height):
     return width / height
+
 
 def resize_image_to_fit_width(image, max_width):
     img_width, img_height = image.size
@@ -118,16 +125,18 @@ def resize_image_to_fit_width(image, max_width):
         return resized_image
     return image
 
+
 def convert_to_pdf(name, imgs, path):
+    print("Starting PDF Conversion: " + name + " with " + str(len(imgs)) + " pages")
     pdf = FPDF('P', 'mm', 'A4')
     pdf.set_auto_page_break(auto=False)
-    
+
     page_width_mm, page_height_mm = 210, 297
     page_width_px = int(page_width_mm * 96 / 25.4)
     page_height_px = int(page_height_mm * 96 / 25.4)
-    
-    print(f"PDF page size: {page_width_px}x{page_height_px} pixels")
-    
+
+    # print(f"PDF page size: {page_width_px}x{page_height_px} pixels")
+
     for img_path in imgs:
         if os.path.exists(img_path):
             try:
@@ -136,21 +145,21 @@ def convert_to_pdf(name, imgs, path):
                 cover = resize_image_to_fit_width(cover, page_width_px)
                 img_width, img_height = cover.size
 
-                print(f"\nProcessing Image: {img_path}")
-                print(f"Raw Image size: {img_width}x{img_height} pixels")
-                
+                # print(f"\nProcessing Image: {img_path}")
+                # print(f"Raw Image size: {img_width}x{img_height} pixels")
+
                 # Continue with the aspect ratio check and segmentation as before...
                 pdf_aspect_ratio = calculate_aspect_ratio(page_width_px, page_height_px)
                 img_aspect_ratio = calculate_aspect_ratio(img_width, img_height)
 
-                print(f"PDF Aspect Ratio: {pdf_aspect_ratio:.2f}")
-                print(f"Image Aspect Ratio: {img_aspect_ratio:.2f}")
+                # print(f"PDF Aspect Ratio: {pdf_aspect_ratio:.2f}")
+                # print(f"Image Aspect Ratio: {img_aspect_ratio:.2f}")
 
                 ratio_difference = abs(img_aspect_ratio - pdf_aspect_ratio) / pdf_aspect_ratio
-                print(f"Aspect Ratio Difference: {ratio_difference * 100:.2f}%")
+                # print(f"Aspect Ratio Difference: {ratio_difference * 100:.2f}%")
 
                 if ratio_difference > 0.15:
-                    print(f"--> Image ratio difference is {ratio_difference * 100:.2f}%, processing as a lengthy image.")
+                    # print(f"--> Image ratio difference is {ratio_difference * 100:.2f}%, processing as a lengthy image.")
 
                     current_top = 0
                     while current_top < img_height:
@@ -166,7 +175,7 @@ def convert_to_pdf(name, imgs, path):
                         img_width_mm = img_part_width * 25.4 / 96
                         img_height_mm = img_part_height * 25.4 / 96
 
-                        print(f"Adding lengthy image segment with size: {img_part_width}x{img_part_height} pixels")
+                        # print(f"Adding lengthy image segment with size: {img_part_width}x{img_part_height} pixels")
 
                         pdf.add_page()
                         pdf.set_fill_color(0, 0, 0)  # Black background
@@ -177,7 +186,7 @@ def convert_to_pdf(name, imgs, path):
                         os.remove(temp_img_path)
 
                 else:
-                    print(f"--> Image ratio difference is {ratio_difference * 100:.2f}%, processing as a normal image.")
+                    # print(f"--> Image ratio difference is {ratio_difference * 100:.2f}%, processing as a normal image.")
 
                     img_width_mm = img_width * 25.4 / 96
                     img_height_mm = img_height * 25.4 / 96
@@ -186,7 +195,7 @@ def convert_to_pdf(name, imgs, path):
                     new_width = img_width_mm * scale
                     new_height = img_height_mm * scale
 
-                    print(f"Adding normal image with scaled size: {new_width:.2f}mm x {new_height:.2f}mm")
+                    # print(f"Adding normal image with scaled size: {new_width:.2f}mm x {new_height:.2f}mm")
 
                     # For normal images, each image starts on a new page
                     pdf.add_page()
@@ -205,18 +214,18 @@ def convert_to_pdf(name, imgs, path):
                 continue  # Skip the problematic image
         else:
             print(f"File not found: {img_path}, skipping.")
-    
+
     if not os.path.exists(MANGA_DIR):
         os.makedirs(MANGA_DIR)
 
     pdf_filename = os.path.join(MANGA_DIR, f"{name}.pdf")
-    
+
     try:
         pdf.output(pdf_filename, "F")
         print(f"Downloaded {name} successfully")
     except FileNotFoundError as e:
         print(f"Failed to save PDF: {e}")
-    
+
     os.chdir(DIR)
 
     time.sleep(1)
@@ -230,12 +239,13 @@ def convert_to_pdf(name, imgs, path):
     else:
         print(f"Directory {path} does not exist, skipping deletion.")
 
+
 def download_manga(chapter_name, url):
     print(f"Downloading {chapter_name} from {url}")
-    
+
     chapter_number = extract_chapter_number(chapter_name)
-    print(f"Sanitized chapter number: {chapter_number}")
-    
+    # print(f"Sanitized chapter number: {chapter_number}")
+
     pages = page_links(url)
     num = len(pages)
     print(f"Downloading {num} pages")
@@ -246,10 +256,11 @@ def download_manga(chapter_name, url):
     if not os.path.exists(path):
         os.mkdir(path)
     os.chdir(path)
-    
+
     download_all_images(pages)
     imgs = [str(i + 1) + ".jpg" for i in range(num)]
     convert_to_pdf(chapter_number, imgs, path)
+
 
 def chapter_links(URL) -> dict:
     retry_attempts = 5
@@ -257,8 +268,11 @@ def chapter_links(URL) -> dict:
         try:
             r = requests.get(URL)
             soup = BeautifulSoup(r.content, 'html.parser')
-            chapters = soup.find_all("a", {"class": "chapter-name text-nowrap"})
-            links = {chapter.text.strip(): chapter['href'] for chapter in chapters}
+            chapters = soup.find_all("a", {})
+            links = {}
+            for chapter in chapters:
+                if URL in chapter["href"] and chapter.text.strip().startswith("Chapter"):
+                    links[chapter.text.strip()] = chapter["href"]
             return links
         except requests.exceptions.RequestException as e:
             print(f"Error fetching chapter links: {e}")
@@ -266,6 +280,7 @@ def chapter_links(URL) -> dict:
                 time.sleep(2 ** attempt)
             else:
                 raise
+
 
 def sort_chapters(chapters):
     def extract_chapter_number(chapter_name):
@@ -277,12 +292,14 @@ def sort_chapters(chapters):
     sorted_chapters = dict(sorted(chapters.items(), key=lambda x: extract_chapter_number(x[0])))
     return sorted_chapters
 
+
 def main():
     URL = input("Enter the URL of the manga: ")
     print("URL: " + URL)
     chapters = chapter_links(URL)
 
     # Filter out volume chapters
+
     chapters = {k: v for k, v in chapters.items() if "Chapter" in k}
 
     chapters = sort_chapters(chapters)
@@ -297,8 +314,12 @@ def main():
         choice = input("Enter your choice (1/2/3/4): ")
 
         if choice == '1':
+            progress = 0
+            length = len(chapters)
             for chapter in chapters:
                 download_manga(chapter, chapters[chapter])
+                progress += 1 / length
+                print("Progress: " + str(round(progress * 100, 2)) + "%")
         elif choice == '2':
             for chapter in chapters:
                 print(chapter + ": " + chapters[chapter])
@@ -322,6 +343,7 @@ def main():
             break
         else:
             print("Invalid choice, please try again.")
+
 
 if __name__ == "__main__":
     main()
