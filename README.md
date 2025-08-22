@@ -54,7 +54,7 @@ The project is based on an idea from [this repository](https://github.com/rishab
 1. Clone this repository:
 
     ```bash
-    git clone https://github.com/RyuKaSa/manga_webtoon_pdf_reader
+    git clone https://github.com/StahlOtto/MangaNelo_PDF_Downloader.git
     cd manga_webtoon_pdf_reader
     ```
 
@@ -116,13 +116,13 @@ The final output is a set of PDF files stored in the `manga/` directory, where e
 
 ### 🎉 **Credits** <a name="credits"></a>
 
-This project is based on the original idea by [Rishabh Choudhary](https://github.com/rishabhxchoudhary/Youtube---Manga-Downloader). Significant improvements have been made to the PDF conversion logic, especially to handle long images for webtoon formats.
+This project is based on a fork by RyuKaS of an original idea by [Rishabh Choudhary](https://github.com/rishabhxchoudhary/Youtube---Manga-Downloader). Significant improvements have been made to the PDF conversion logic, especially to handle long images for webtoon formats. It was forked again, so that it works with the new MangaNelo Website.
 
 ---
 
 ### 🤝 **Contributing** <a name="contributing"></a>
 
-Contributions are welcome! If you find a bug or have a feature request, feel free to cdoe your version. 
+Contributions are welcome! If you find a bug or have a feature request, feel free to code your version. 
 
 ---
 
