@@ -135,8 +135,6 @@ def convert_to_pdf(name, imgs, path):
     page_width_px = int(page_width_mm * 96 / 25.4)
     page_height_px = int(page_height_mm * 96 / 25.4)
 
-    # print(f"PDF page size: {page_width_px}x{page_height_px} pixels")
-
     for img_path in imgs:
         if os.path.exists(img_path):
             try:
@@ -145,21 +143,13 @@ def convert_to_pdf(name, imgs, path):
                 cover = resize_image_to_fit_width(cover, page_width_px)
                 img_width, img_height = cover.size
 
-                # print(f"\nProcessing Image: {img_path}")
-                # print(f"Raw Image size: {img_width}x{img_height} pixels")
-
                 # Continue with the aspect ratio check and segmentation as before...
                 pdf_aspect_ratio = calculate_aspect_ratio(page_width_px, page_height_px)
                 img_aspect_ratio = calculate_aspect_ratio(img_width, img_height)
 
-                # print(f"PDF Aspect Ratio: {pdf_aspect_ratio:.2f}")
-                # print(f"Image Aspect Ratio: {img_aspect_ratio:.2f}")
-
                 ratio_difference = abs(img_aspect_ratio - pdf_aspect_ratio) / pdf_aspect_ratio
-                # print(f"Aspect Ratio Difference: {ratio_difference * 100:.2f}%")
 
                 if ratio_difference > 0.15:
-                    # print(f"--> Image ratio difference is {ratio_difference * 100:.2f}%, processing as a lengthy image.")
 
                     current_top = 0
                     while current_top < img_height:
@@ -175,8 +165,6 @@ def convert_to_pdf(name, imgs, path):
                         img_width_mm = img_part_width * 25.4 / 96
                         img_height_mm = img_part_height * 25.4 / 96
 
-                        # print(f"Adding lengthy image segment with size: {img_part_width}x{img_part_height} pixels")
-
                         pdf.add_page()
                         pdf.set_fill_color(0, 0, 0)  # Black background
                         pdf.rect(0, 0, page_width_mm, page_height_mm, 'F')  # Fill the entire page
@@ -186,16 +174,12 @@ def convert_to_pdf(name, imgs, path):
                         os.remove(temp_img_path)
 
                 else:
-                    # print(f"--> Image ratio difference is {ratio_difference * 100:.2f}%, processing as a normal image.")
-
                     img_width_mm = img_width * 25.4 / 96
                     img_height_mm = img_height * 25.4 / 96
 
                     scale = min(page_width_mm / img_width_mm, page_height_mm / img_height_mm)
                     new_width = img_width_mm * scale
                     new_height = img_height_mm * scale
-
-                    # print(f"Adding normal image with scaled size: {new_width:.2f}mm x {new_height:.2f}mm")
 
                     # For normal images, each image starts on a new page
                     pdf.add_page()
@@ -233,7 +217,6 @@ def convert_to_pdf(name, imgs, path):
     if os.path.exists(path):
         try:
             shutil.rmtree(path)
-            print(f"Deleted directory {path} successfully.")
         except Exception as e:
             print(f"Failed to delete directory {path}: {e}")
     else:
@@ -244,7 +227,6 @@ def download_manga(chapter_name, url):
     print(f"Downloading {chapter_name} from {url}")
 
     chapter_number = extract_chapter_number(chapter_name)
-    # print(f"Sanitized chapter number: {chapter_number}")
 
     pages = page_links(url)
     num = len(pages)
